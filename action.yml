@@ -19,6 +19,7 @@ inputs:
   github_token:
     description: "GitHub token with repo and pull request permissions (optional if using GitHub App)"
     required: false
+    default: ${{ github.token }}
 
   use_bedrock:
     description: "Use Amazon Bedrock with OIDC authentication instead of direct Anthropic API"
@@ -247,6 +248,7 @@ runs:
       uses: anthropics/claude-code-action@v1
       id: claude-review
       with:
+        github_token: ${{ inputs.github-token }}
         anthropic_api_key: ${{ inputs.anthropic_api_key }}
         track_progress: ${{ inputs.track_progress }}
         prompt: ${{ steps.review-prompt.outputs.prompt }}
