@@ -1,0 +1,105 @@
+name: Performance-Focused PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**/*.js'
+      - '**/*.ts'
+      - '**/*.py'
+      - '**/*.java'
+      - '**/*.go'
+      - '**/*.cpp'
+      - '**/*.c'
+      - '**/*.rs'
+      - '**/*.sql'
+  
+  # Manual trigger for performance analysis
+  workflow_dispatch:
+    inputs:
+      focus_area:
+        description: 'Performance focus area'
+        required: false
+        default: 'general'
+        type: choice
+        options:
+          - general
+          - database
+          - algorithms
+          - memory
+          - network
+
+jobs:
+  performance-review:
+    name: Performance Code Review
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Performance Review Prompt
+        id: perf-prompt
+        run: |
+          FOCUS="${{ github.event.inputs.focus_area || 'general' }}"
+          case "$FOCUS" in
+            "database")
+              CUSTOM_PROMPT="Focus specifically on database performance: query optimization, indexing strategies, N+1 problems, connection pooling, and ORM usage patterns."
+              ;;
+            "algorithms")
+              CUSTOM_PROMPT="Focus on algorithmic efficiency: time and space complexity, data structure choices, loop optimizations, and scalability considerations."
+              ;;
+            "memory")
+              CUSTOM_PROMPT="Focus on memory usage: memory leaks, garbage collection impact, object lifecycle, caching strategies, and memory-efficient data structures."
+              ;;
+            "network")
+              CUSTOM_PROMPT="Focus on network performance: API call patterns, request batching, caching strategies, data serialization, and bandwidth optimization."
+              ;;
+            *)
+              CUSTOM_PROMPT="Perform comprehensive performance analysis covering algorithms, database queries, memory usage, and network operations."
+              ;;
+          esac
+          
+          echo "custom_prompt<<EOF" >> $GITHUB_OUTPUT
+          echo "$CUSTOM_PROMPT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Run Performance-Focused Review
+        uses: ./  # For testing, use ./ - in production use: your-org/claude-code-review@v1
+        id: perf-review
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          review_type: 'performance'
+          custom_prompt: ${{ steps.perf-prompt.outputs.custom_prompt }}
+          progress_tracking: true
+          severity_labels: true
+          max_review_comments: 40
+          exclude_paths: 'node_modules,dist,build,.git,test/**,*.test.*,*.spec.*'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Add Performance Review Label
+        if: always()
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "performance-review-completed" || echo "Failed to add label"
+          
+          # Add focus-specific label if available
+          FOCUS="${{ github.event.inputs.focus_area }}"
+          if [ "$FOCUS" != "general" ] && [ -n "$FOCUS" ]; then
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "perf-focus-$FOCUS" || echo "Failed to add focus label"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Performance Review Summary
+        if: always()
+        run: |
+          echo "⚡ Performance review completed!"
+          echo "Focus area: ${{ github.event.inputs.focus_area || 'general' }}"
+          echo "Review the feedback for optimization opportunities and performance improvements."

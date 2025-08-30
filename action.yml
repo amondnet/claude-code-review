@@ -1,0 +1,355 @@
+name: 'Claude Code Review'
+description: 'AI-powered comprehensive code review using Claude with customizable review types and automated feedback'
+author: 'Claude Code Review Team'
+
+branding:
+  icon: 'code'
+  color: 'blue'
+
+inputs:
+  # Auth configuration
+  anthropic_api_key:
+    description: "Anthropic API key (required for direct API, not needed for Bedrock/Vertex)"
+    required: false
+
+  claude_code_oauth_token:
+    description: "Claude Code OAuth token (alternative to anthropic_api_key)"
+    required: false
+
+  github_token:
+    description: "GitHub token with repo and pull request permissions (optional if using GitHub App)"
+    required: false
+
+  use_bedrock:
+    description: "Use Amazon Bedrock with OIDC authentication instead of direct Anthropic API"
+    required: false
+    default: "false"
+
+  use_vertex:
+    description: "Use Google Vertex AI with OIDC authentication instead of direct Anthropic API"
+    required: false
+    default: "false"
+  
+  review_type:
+    description: 'Type of review to perform (comprehensive, security, performance, custom)'
+    required: false
+    default: 'comprehensive'
+  
+  custom_prompt:
+    description: 'Custom review prompt for specialized review needs'
+    required: false
+  
+  files_to_review:
+    description: 'Specific files or patterns to review (default: all changed files)'
+    required: false
+  
+  severity_labels:
+    description: 'Automatically add severity labels to PR based on issues found'
+    required: false
+    default: 'true'
+  
+  track_progress:
+    description: 'Force tag mode with tracking comments'
+    required: false
+    default: 'false'
+  
+  exclude_paths:
+    description: 'Comma-separated list of paths to exclude from review'
+    required: false
+    default: 'node_modules,dist,build,.git'
+  
+  max_review_comments:
+    description: 'Maximum number of inline comments to generate'
+    required: false
+    default: '50'
+
+outputs:
+  review_summary:
+    description: 'Summary of the code review results'
+    value: ${{ steps.summary.outputs.review_summary }}
+  
+  issues_found:
+    description: 'Total number of issues found'
+    value: ${{ steps.parse-results.outputs.issues_found }}
+  
+  critical_issues:
+    description: 'Number of critical severity issues'
+    value: ${{ steps.parse-results.outputs.critical_issues }}
+  
+  high_issues:
+    description: 'Number of high severity issues'
+    value: ${{ steps.parse-results.outputs.high_issues }}
+  
+  medium_issues:
+    description: 'Number of medium severity issues'
+    value: ${{ steps.parse-results.outputs.medium_issues }}
+  
+  low_issues:
+    description: 'Number of low severity issues'
+    value: ${{ steps.parse-results.outputs.low_issues }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Review Environment
+      shell: bash
+      run: |
+        echo "🚀 Starting Claude Code Review"
+        echo "Review Type: ${{ inputs.review_type }}"
+        echo "Progress Tracking: ${{ inputs.progress_tracking }}"
+    
+    - name: Determine Review Prompt
+      shell: bash
+      id: review-prompt
+      run: |
+        # Build base context
+        BASE_CONTEXT="REPOSITORY: ${{ github.repository }}
+        PR NUMBER: ${{ github.event.pull_request.number }}
+        PR TITLE: ${{ github.event.pull_request.title }}
+        PR AUTHOR: ${{ github.event.pull_request.user.login }}
+        BASE BRANCH: ${{ github.event.pull_request.base.ref }}
+        HEAD BRANCH: ${{ github.event.pull_request.head.ref }}
+        
+        You are reviewing pull request #${{ github.event.pull_request.number }} in the ${{ github.repository }} repository.
+        "
+        
+        case "${{ inputs.review_type }}" in
+          "security")
+            PROMPT="$BASE_CONTEXT
+            
+            Perform a comprehensive SECURITY-FOCUSED code review.
+            
+            REVIEW CRITERIA:
+            1. Security Vulnerabilities (OWASP Top 10)
+            2. Authentication and Authorization issues  
+            3. Input validation and sanitization
+            4. Data exposure and privacy concerns
+            5. Dependency vulnerabilities
+            6. Secure coding practices
+            7. Secrets and credential exposure
+            8. SQL injection and XSS vulnerabilities
+            
+            OUTPUT FORMAT:
+            - Use inline comments for line-specific issues
+            - Provide a summary comment with overall security assessment
+            - Categorize each finding by severity: CRITICAL, HIGH, MEDIUM, LOW
+            - Include CVE references where applicable
+            - Suggest specific remediation steps with code examples
+            
+            Focus on actionable security improvements that reduce risk."
+            ;;
+          "performance")
+            PROMPT="$BASE_CONTEXT
+            
+            Perform a PERFORMANCE-FOCUSED code review.
+            
+            REVIEW CRITERIA:
+            1. Algorithm efficiency and Big O complexity
+            2. Database query optimization (N+1 queries, missing indexes)
+            3. Memory usage and potential leaks
+            4. Caching strategies and opportunities
+            5. Network request optimization
+            6. Resource utilization and pooling
+            7. Async/await and concurrency patterns
+            8. Bundle size and code splitting opportunities
+            
+            OUTPUT FORMAT:
+            - Use inline comments for specific performance issues
+            - Provide benchmarks or performance impact estimates where possible
+            - Categorize by impact: CRITICAL (blocking), HIGH (significant), MEDIUM (noticeable), LOW (minor)
+            - Suggest specific optimizations with code examples
+            - Identify performance regression risks
+            
+            Focus on measurable performance improvements."
+            ;;
+          "custom")
+            PROMPT="$BASE_CONTEXT
+            
+            ${{ inputs.custom_prompt }}
+            
+            Use inline comments for specific issues and provide a summary comment."
+            ;;
+          *)
+            PROMPT="$BASE_CONTEXT
+            
+            Perform a COMPREHENSIVE code review.
+            
+            REVIEW CRITERIA:
+            1. Code Quality and Maintainability
+               - Clean code principles
+               - SOLID principles adherence
+               - Code duplication
+            2. Best Practices and Conventions
+               - Language-specific idioms
+               - Framework best practices
+               - Naming conventions
+            3. Security Considerations
+               - Common vulnerabilities
+               - Input validation
+               - Authentication/authorization
+            4. Performance Implications
+               - Algorithm efficiency
+               - Resource usage
+               - Potential bottlenecks
+            5. Testing Coverage and Quality
+               - Test completeness
+               - Edge cases coverage
+               - Test maintainability
+            6. Documentation and Comments
+               - Code clarity
+               - API documentation
+               - Complex logic explanation
+            7. Error Handling and Edge Cases
+               - Exception handling
+               - Boundary conditions
+               - Graceful degradation
+            8. Architecture and Design Patterns
+               - Pattern appropriateness
+               - Separation of concerns
+               - Modularity
+            
+            OUTPUT FORMAT:
+            - Use inline comments on specific lines for detailed feedback
+            - Provide a summary comment with overall assessment
+            - Categorize issues by severity: CRITICAL, HIGH, MEDIUM, LOW
+            - Include specific code suggestions for improvements
+            - Highlight particularly good code practices
+            
+            Be constructive and educational in your feedback."
+            ;;
+        esac
+        
+        # Handle file filtering
+        if [ -n "${{ inputs.files_to_review }}" ]; then
+          PROMPT="$PROMPT
+          
+          SCOPE: Focus your review only on files matching these patterns: ${{ inputs.files_to_review }}"
+        fi
+        
+        # Add exclusion patterns
+        if [ -n "${{ inputs.exclude_paths }}" ]; then
+          PROMPT="$PROMPT
+          
+          EXCLUSIONS: Skip these paths entirely: ${{ inputs.exclude_paths }}"
+        fi
+        
+        # Add comment limit
+        PROMPT="$PROMPT
+        
+        IMPORTANT: Limit inline comments to the ${{ inputs.max_review_comments }} most important issues.
+        Prioritize by severity and impact."
+        
+        echo "prompt<<EOF" >> $GITHUB_OUTPUT
+        echo "$PROMPT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Execute Claude Code Review
+      uses: anthropics/claude-code-action@v1
+      id: claude-review
+      with:
+        anthropic_api_key: ${{ inputs.anthropic_api_key }}
+        track_progress: ${{ inputs.track_progress }}
+        prompt: ${{ steps.review-prompt.outputs.prompt }}
+        claude_args: >
+          --allowedTools "mcp__github__get_pull_request,
+          mcp__github__get_pull_request_files,
+          mcp__github__get_pull_request_diff,
+          mcp__github__create_pending_pull_request_review,
+          mcp__github__add_comment_to_pending_review,
+          mcp__github__submit_pending_pull_request_review,
+          mcp__github__add_issue_comment,
+          Read,
+          Grep,
+          Bash(gh pr comment:*)"
+    
+    - name: Parse Review Results and Add Labels
+      if: inputs.severity_labels == 'true'
+      shell: bash
+      id: parse-results
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        echo "📊 Analyzing review results and adding severity labels"
+        
+        # Initialize counters
+        CRITICAL_COUNT=0
+        HIGH_COUNT=0
+        MEDIUM_COUNT=0
+        LOW_COUNT=0
+        
+        # Get the latest PR comments to analyze severity
+        # This is a simplified version - in production, you'd parse Claude's actual output
+        PR_COMMENTS=$(gh pr view ${{ github.event.pull_request.number }} --json comments -q '.comments[].body' 2>/dev/null || echo "")
+        
+        # Count severity mentions (simplified parsing)
+        if echo "$PR_COMMENTS" | grep -qi "critical"; then
+          CRITICAL_COUNT=$(echo "$PR_COMMENTS" | grep -oi "critical" | wc -l)
+        fi
+        if echo "$PR_COMMENTS" | grep -qi "high"; then
+          HIGH_COUNT=$(echo "$PR_COMMENTS" | grep -oi "high" | wc -l)
+        fi
+        if echo "$PR_COMMENTS" | grep -qi "medium"; then
+          MEDIUM_COUNT=$(echo "$PR_COMMENTS" | grep -oi "medium" | wc -l)
+        fi
+        if echo "$PR_COMMENTS" | grep -qi "low"; then
+          LOW_COUNT=$(echo "$PR_COMMENTS" | grep -oi "low" | wc -l)
+        fi
+        
+        TOTAL_ISSUES=$((CRITICAL_COUNT + HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
+        
+        # Set outputs for downstream use
+        echo "issues_found=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+        echo "critical_issues=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
+        echo "high_issues=$HIGH_COUNT" >> $GITHUB_OUTPUT
+        echo "medium_issues=$MEDIUM_COUNT" >> $GITHUB_OUTPUT
+        echo "low_issues=$LOW_COUNT" >> $GITHUB_OUTPUT
+        
+        # Add review type label
+        if [ "${{ inputs.review_type }}" == "security" ]; then
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "security-review" 2>/dev/null || true
+        elif [ "${{ inputs.review_type }}" == "performance" ]; then
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "performance-review" 2>/dev/null || true
+        fi
+        
+        # Add severity labels based on findings
+        if [ $CRITICAL_COUNT -gt 0 ]; then
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "has-critical-issues" 2>/dev/null || true
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "needs-attention" 2>/dev/null || true
+        elif [ $HIGH_COUNT -gt 0 ]; then
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "has-high-issues" 2>/dev/null || true
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "needs-attention" 2>/dev/null || true
+        elif [ $MEDIUM_COUNT -gt 3 ]; then
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "needs-attention" 2>/dev/null || true
+        fi
+        
+        # Always add the reviewed label
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "claude-reviewed" 2>/dev/null || true
+        
+        echo "✅ Labels added based on review findings"
+    
+    - name: Generate Review Summary
+      shell: bash
+      id: summary
+      run: |
+        echo "✅ Claude Code Review completed successfully"
+        echo "Review type: ${{ inputs.review_type }}"
+        echo "Progress tracking was ${{ inputs.progress_tracking == 'true' && 'enabled' || 'disabled' }}"
+        
+        # Display results if available
+        if [ -n "${{ steps.parse-results.outputs.issues_found }}" ]; then
+          echo ""
+          echo "📊 Review Results:"
+          echo "  Total Issues: ${{ steps.parse-results.outputs.issues_found }}"
+          echo "  Critical: ${{ steps.parse-results.outputs.critical_issues }}"
+          echo "  High: ${{ steps.parse-results.outputs.high_issues }}"
+          echo "  Medium: ${{ steps.parse-results.outputs.medium_issues }}"
+          echo "  Low: ${{ steps.parse-results.outputs.low_issues }}"
+        fi
+        
+        # Create summary for output
+        SUMMARY="Claude reviewed PR #${{ github.event.pull_request.number }} with ${{ inputs.review_type }} focus."
+        if [ -n "${{ steps.parse-results.outputs.issues_found }}" ]; then
+          SUMMARY="$SUMMARY Found ${{ steps.parse-results.outputs.issues_found }} total issues."
+        fi
+        
+        echo "review_summary=$SUMMARY" >> $GITHUB_OUTPUT

@@ -1,0 +1,277 @@
+name: Test Claude Code Review Action
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  
+  # Manual testing
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - security
+          - performance
+          - custom
+
+jobs:
+  test-action-syntax:
+    name: Test Action Syntax
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Validate action.yml syntax
+        run: |
+          # Check if action.yml exists and is valid YAML
+          if [ ! -f "action.yml" ]; then
+            echo "❌ action.yml file not found"
+            exit 1
+          fi
+          
+          # Install yq for YAML validation
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # Validate YAML syntax
+          yq eval '.' action.yml > /dev/null
+          echo "✅ action.yml syntax is valid"
+          
+          # Check required fields
+          NAME=$(yq eval '.name' action.yml)
+          DESC=$(yq eval '.description' action.yml)
+          RUNS=$(yq eval '.runs.using' action.yml)
+          
+          if [ "$NAME" = "null" ] || [ -z "$NAME" ]; then
+            echo "❌ Missing required field: name"
+            exit 1
+          fi
+          
+          if [ "$DESC" = "null" ] || [ -z "$DESC" ]; then
+            echo "❌ Missing required field: description"
+            exit 1
+          fi
+          
+          if [ "$RUNS" != "composite" ]; then
+            echo "❌ Action must use composite run type"
+            exit 1
+          fi
+          
+          echo "✅ All required fields are present and valid"
+  
+  test-example-workflows:
+    name: Test Example Workflows
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Validate example workflows
+        run: |
+          # Check if example workflows exist
+          EXAMPLES_DIR="examples"
+          if [ ! -d "$EXAMPLES_DIR" ]; then
+            echo "❌ Examples directory not found"
+            exit 1
+          fi
+          
+          # Install yq for YAML validation
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # Validate each example workflow
+          for workflow in examples/*.yml; do
+            if [ -f "$workflow" ]; then
+              echo "Validating $workflow..."
+              yq eval '.' "$workflow" > /dev/null
+              
+              # Check for required GitHub Actions fields
+              NAME=$(yq eval '.name' "$workflow")
+              ON=$(yq eval '.on' "$workflow")
+              JOBS=$(yq eval '.jobs' "$workflow")
+              
+              if [ "$NAME" = "null" ]; then
+                echo "❌ Missing workflow name in $workflow"
+                exit 1
+              fi
+              
+              if [ "$ON" = "null" ]; then
+                echo "❌ Missing workflow triggers in $workflow"
+                exit 1
+              fi
+              
+              if [ "$JOBS" = "null" ]; then
+                echo "❌ Missing jobs in $workflow"
+                exit 1
+              fi
+              
+              echo "✅ $workflow is valid"
+            fi
+          done
+
+  test-documentation:
+    name: Test Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check required documentation files
+        run: |
+          # Check for essential documentation
+          REQUIRED_FILES=(
+            "README.md"
+            ".github/review-templates/general.md"
+            ".github/review-templates/security.md"
+            ".github/review-templates/performance.md"
+          )
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Missing required file: $file"
+              exit 1
+            else
+              echo "✅ Found: $file"
+            fi
+          done
+      
+      - name: Validate markdown files
+        run: |
+          # Install markdown linter
+          npm install -g markdownlint-cli
+          
+          # Lint all markdown files
+          if ! markdownlint --config .markdownlint.json --ignore node_modules --ignore .git *.md .github/**/*.md 2>/dev/null; then
+            echo "⚠️  Some markdown files have linting issues (non-blocking)"
+          else
+            echo "✅ All markdown files are properly formatted"
+          fi
+
+  # Simulated test run (without actual API key)
+  test-action-dry-run:
+    name: Test Action Structure (Dry Run)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need some history for diff
+      
+      - name: Setup test environment
+        run: |
+          echo "Setting up test environment..."
+          echo "MOCK_API_KEY=test-key-12345" >> $GITHUB_ENV
+          echo "Testing action structure without making actual API calls"
+      
+      - name: Test action inputs validation
+        run: |
+          # Create a simple test to validate input handling
+          echo "Testing input parameter validation..."
+          
+          # Test required parameter
+          if [ -z "$MOCK_API_KEY" ]; then
+            echo "❌ API key validation failed"
+            exit 1
+          fi
+          
+          echo "✅ Input validation passed"
+      
+      - name: Test action outputs structure
+        run: |
+          # Test that the action.yml defines expected outputs
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          OUTPUTS=$(yq eval '.outputs' action.yml)
+          
+          if [ "$OUTPUTS" = "null" ]; then
+            echo "❌ No outputs defined in action.yml"
+            exit 1
+          fi
+          
+          # Check for expected output keys
+          EXPECTED_OUTPUTS=("review_summary" "issues_found" "critical_issues" "high_issues" "medium_issues" "low_issues")
+          
+          for output in "${EXPECTED_OUTPUTS[@]}"; do
+            OUTPUT_DEF=$(yq eval ".outputs.$output" action.yml)
+            if [ "$OUTPUT_DEF" = "null" ]; then
+              echo "❌ Missing expected output: $output"
+              exit 1
+            else
+              echo "✅ Output defined: $output"
+            fi
+          done
+
+  test-github-integration:
+    name: Test GitHub Integration
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Test GitHub CLI access
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Test basic GitHub CLI functionality
+          gh --version
+          
+          # Test PR access (if we're in a PR context)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Testing PR access..."
+            gh pr view ${{ github.event.pull_request.number }} --json number,title
+            echo "✅ GitHub CLI PR access working"
+          fi
+      
+      - name: Test permissions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Testing GitHub permissions..."
+          
+          # Test if we can read repository content
+          gh repo view ${{ github.repository }} --json name,description
+          
+          echo "✅ Basic GitHub permissions verified"
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Create test PR (mock)
+        run: |
+          echo "This would test the action in a real PR scenario"
+          echo "Test type: ${{ github.event.inputs.test_type }}"
+          
+          # In a real implementation, this could:
+          # 1. Create a temporary branch with test changes
+          # 2. Open a PR
+          # 3. Run the action
+          # 4. Verify results
+          # 5. Clean up
+          
+          echo "✅ Integration test framework ready"

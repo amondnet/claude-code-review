@@ -1,0 +1,44 @@
+name: Basic PR Review with Claude
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  claude-review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    
+    # Skip draft PRs unless manually triggered
+    if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Run Claude Code Review
+        uses: ./  # For testing, use ./ - in production use: your-org/claude-code-review@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          review_type: 'comprehensive'
+          progress_tracking: true
+          severity_labels: true
+          max_review_comments: 30
+          exclude_paths: 'node_modules,dist,build,.git,*.lock'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Review Complete Notification
+        if: always()
+        run: |
+          echo "🎉 Claude code review completed!"
+          echo "Check the PR for detailed feedback and suggestions."

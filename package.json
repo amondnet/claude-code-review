@@ -1,0 +1,25 @@
+{
+  "name": "claude-code-review",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amondnet/claude-code-review.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/amondnet/claude-code-review/issues"
+  },
+  "homepage": "https://github.com/amondnet/claude-code-review#readme",
+  "devDependencies": {
+    "@antfu/eslint-config": "^5.2.1",
+    "eslint": "^9.33.0",
+    "eslint-plugin-format": "^1.0.1"
+  }
+}

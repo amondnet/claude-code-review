@@ -1,0 +1,75 @@
+name: Security-Focused PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**/*.js'
+      - '**/*.ts'
+      - '**/*.py'
+      - '**/*.java'
+      - '**/*.go'
+      - '**/*.php'
+      - '**/*.rb'
+      - '**/*.cs'
+      - '**/Dockerfile'
+      - '**/*.yaml'
+      - '**/*.yml'
+      - '**/*.json'
+  
+  # Trigger on security-related file changes
+  push:
+    paths:
+      - '**/security/**'
+      - '**/auth/**'
+      - '**/authentication/**'
+      - '**/authorization/**'
+
+jobs:
+  security-review:
+    name: Security Code Review
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Run Security-Focused Review
+        uses: ./  # For testing, use ./ - in production use: your-org/claude-code-review@v1
+        id: security-review
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          review_type: 'security'
+          progress_tracking: true
+          severity_labels: true
+          max_review_comments: 50
+          exclude_paths: 'node_modules,dist,build,.git,test/**,*.test.*,*.spec.*'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Add Security Review Label
+        if: always()
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "security-review-completed" || echo "Failed to add label"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Security Review Summary
+        if: always()
+        run: |
+          echo "🔒 Security review completed!"
+          if [ -n "${{ steps.security-review.outputs.critical_issues }}" ] && [ "${{ steps.security-review.outputs.critical_issues }}" -gt 0 ]; then
+            echo "⚠️ CRITICAL security issues found: ${{ steps.security-review.outputs.critical_issues }}"
+            echo "These must be addressed before merging!"
+            exit 1
+          fi
+          echo "Total issues found: ${{ steps.security-review.outputs.issues_found }}"
+          echo "Please review all security-related feedback carefully."
+          echo "Consider running additional security scans if critical issues were found."

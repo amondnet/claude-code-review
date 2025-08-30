@@ -1,0 +1,110 @@
+name: Custom PR Review with Advanced Configuration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  
+  # Manual trigger with custom parameters
+  workflow_dispatch:
+    inputs:
+      custom_prompt:
+        description: 'Custom review prompt'
+        required: false
+        default: 'Focus on code maintainability and documentation quality'
+      files_to_review:
+        description: 'Specific files or patterns (e.g., src/**/*.ts)'
+        required: false
+      max_comments:
+        description: 'Maximum number of review comments'
+        required: false
+        default: '25'
+      exclude_tests:
+        description: 'Exclude test files from review'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  custom-review:
+    name: Custom Claude Review
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Custom Review Parameters
+        id: setup
+        run: |
+          # Setup exclusion paths
+          EXCLUDE_PATHS="node_modules,dist,build,.git"
+          if [ "${{ github.event.inputs.exclude_tests }}" = "true" ]; then
+            EXCLUDE_PATHS="$EXCLUDE_PATHS,test/**,tests/**,__tests__/**,*.test.*,*.spec.*,cypress/**,e2e/**"
+          fi
+          
+          echo "exclude_paths=$EXCLUDE_PATHS" >> $GITHUB_OUTPUT
+          
+          # Setup custom prompt if provided
+          CUSTOM_PROMPT="${{ github.event.inputs.custom_prompt }}"
+          if [ -z "$CUSTOM_PROMPT" ]; then
+            CUSTOM_PROMPT="Perform a thorough code review focusing on:
+            1. Code maintainability and readability
+            2. Proper error handling and edge cases
+            3. Documentation and comments quality
+            4. Adherence to coding standards and best practices
+            5. Potential refactoring opportunities
+            6. Architecture and design pattern usage
+            
+            Provide specific, actionable feedback with examples and suggestions."
+          fi
+          
+          echo "custom_prompt<<EOF" >> $GITHUB_OUTPUT
+          echo "$CUSTOM_PROMPT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Run Custom Claude Review
+        uses: ./  # For testing, use ./ - in production use: your-org/claude-code-review@v1
+        id: custom-review
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          review_type: 'custom'
+          custom_prompt: ${{ steps.setup.outputs.custom_prompt }}
+          files_to_review: ${{ github.event.inputs.files_to_review }}
+          progress_tracking: true
+          severity_labels: true
+          max_review_comments: ${{ github.event.inputs.max_comments || '25' }}
+          exclude_paths: ${{ steps.setup.outputs.exclude_paths }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Add Custom Review Labels
+        if: always()
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "custom-review-completed" || echo "Failed to add main label"
+          
+          # Add additional contextual labels
+          if [ -n "${{ github.event.inputs.files_to_review }}" ]; then
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "targeted-review" || echo "Failed to add targeted label"
+          fi
+          
+          if [ "${{ github.event.inputs.exclude_tests }}" = "true" ]; then
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "no-test-review" || echo "Failed to add no-test label"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Custom Review Summary
+        if: always()
+        run: |
+          echo "🔧 Custom code review completed!"
+          echo "Configuration used:"
+          echo "  - Files reviewed: ${{ github.event.inputs.files_to_review || 'All changed files' }}"
+          echo "  - Max comments: ${{ github.event.inputs.max_comments || '25' }}"
+          echo "  - Tests excluded: ${{ github.event.inputs.exclude_tests || 'true' }}"
+          echo "Review the PR for detailed feedback based on your custom criteria."
