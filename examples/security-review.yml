@@ -38,9 +38,9 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       
       - name: Run Security-Focused Review
         uses: ./  # For testing, use ./ - in production use: your-org/claude-code-review@v1
