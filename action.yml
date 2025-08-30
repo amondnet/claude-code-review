@@ -97,7 +97,7 @@ runs:
       run: |
         echo "🚀 Starting Claude Code Review"
         echo "Review Type: ${{ inputs.review_type }}"
-        echo "Progress Tracking: ${{ inputs.progress_tracking }}"
+        echo "Progress Tracking: ${{ inputs.track_progress }}"
     
     - name: Determine Review Prompt
       shell: bash
@@ -335,7 +335,7 @@ runs:
       run: |
         echo "✅ Claude Code Review completed successfully"
         echo "Review type: ${{ inputs.review_type }}"
-        echo "Progress tracking was ${{ inputs.progress_tracking == 'true' && 'enabled' || 'disabled' }}"
+        echo "Progress tracking was ${{ inputs.track_progress == 'true' && 'enabled' || 'disabled' }}"
         
         # Display results if available
         if [ -n "${{ steps.parse-results.outputs.issues_found }}" ]; then

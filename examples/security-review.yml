@@ -48,7 +48,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           review_type: 'security'
-          progress_tracking: true
+          track_progress: true
           severity_labels: true
           max_review_comments: 50
           exclude_paths: 'node_modules,dist,build,.git,test/**,*.test.*,*.spec.*'

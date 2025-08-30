@@ -165,7 +165,7 @@ echo "<h1>Welcome " . htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8') . "</
   with:
     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
     review_type: 'security'
-    progress_tracking: true
+    track_progress: true
     severity_labels: true
     max_review_comments: 50
 ```

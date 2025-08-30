@@ -58,7 +58,7 @@ jobs:
 |-------|-------------|----------|---------|
 | `anthropic_api_key` | Your Anthropic API key | ✅ Yes | - |
 | `review_type` | Type of review (comprehensive/security/performance/custom) | No | `comprehensive` |
-| `progress_tracking` | Enable progress tracking | No | `true` |
+| `track_progress` | Enable progress tracking | No | `true` |
 | `severity_labels` | Add severity labels to PR | No | `true` |
 
 ### Advanced Configuration

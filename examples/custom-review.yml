@@ -77,7 +77,7 @@ jobs:
           review_type: 'custom'
           custom_prompt: ${{ steps.setup.outputs.custom_prompt }}
           files_to_review: ${{ github.event.inputs.files_to_review }}
-          progress_tracking: true
+          track_progress: true
           severity_labels: true
           max_review_comments: ${{ github.event.inputs.max_comments || '25' }}
           exclude_paths: ${{ steps.setup.outputs.exclude_paths }}
